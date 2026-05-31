@@ -1,81 +1,60 @@
-# Turborepo starter
+# SynCraft
 
-This is an official starter Turborepo.
+A Zapier-style automation platform. You connect a **trigger** (like an incoming webhook) to a chain of **actions**, bundle them into a "Craft", and let it run. When the trigger fires, the actions execute in order.
 
-## Using this example
+## Tech Stack
 
-Run the following command:
+- **Monorepo:** [Turborepo](https://turbo.build/) + npm workspaces
+- **Language:** TypeScript
+- **Backend:** Node.js + Express
+- **Database:** PostgreSQL with [Prisma](https://www.prisma.io/) ORM
+- **Messaging:** Apache Kafka (via [KafkaJS](https://kafka.js.org/))
+- **Auth:** JWT
+- **Validation:** [Zod](https://zod.dev/)
+
+## How It Works
+
+The project is split into a few small services that each do one job:
+
+| Service | What it does |
+| --- | --- |
+| **primary-backend** | The main REST API — handles sign up / sign in, and lets users create and view their Crafts, triggers, and actions. |
+| **hooks** | Receives incoming webhooks (`/hooks/catch/:userId/:craftId`) and records that a Craft should run. |
+| **sweeper** | A background worker that picks up those pending runs and pushes them onto Kafka for processing. |
+
+When a webhook comes in, `hooks` writes the run to the database along with an entry in an **outbox** table (in a single transaction). The `sweeper` then continuously reads from that outbox and publishes each run to a Kafka topic, where downstream workers can pick it up and actually execute the actions. This outbox pattern keeps things reliable — a run is never lost just because a message failed to send.
+
+Shared logic lives in `packages/`:
+
+- `database` – Prisma schema + client
+- `schemas` – shared Zod validation schemas
+- `middleware` – JWT auth middleware
+
+## Getting Started
 
 ```sh
-npx create-turbo@latest
+# install dependencies
+npm install
+
+# set up the database (from packages/database)
+npm run db:generate
+npm run db:push
+
+# run everything in dev
+npm run dev
 ```
 
-## What's inside?
+You'll need a running **PostgreSQL** instance (set `DATABASE_URL`) and a **Kafka** broker (defaults to `localhost:9092`).
 
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
+## Project Structure
 
 ```
-cd my-turborepo
-pnpm build
+apps/
+  primary-backend/   REST API
+  hooks/             webhook receiver
+  sweeper/           outbox → Kafka worker
+packages/
+  database/          Prisma schema & client
+  schemas/           Zod schemas
+  middleware/        JWT auth
 ```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-```
-cd my-turborepo
-pnpm dev
-```
-
-### Remote Caching
-
-Turborepo can use a technique known as [Remote Caching](https://turbo.build/repo/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup), then enter the following commands:
-
-```
-cd my-turborepo
-npx turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-```
-npx turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turbo.build/repo/docs/core-concepts/monorepos/running-tasks)
-- [Caching](https://turbo.build/repo/docs/core-concepts/caching)
-- [Remote Caching](https://turbo.build/repo/docs/core-concepts/remote-caching)
-- [Filtering](https://turbo.build/repo/docs/core-concepts/monorepos/filtering)
-- [Configuration Options](https://turbo.build/repo/docs/reference/configuration)
-- [CLI Usage](https://turbo.build/repo/docs/reference/command-line-reference)
